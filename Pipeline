@@ -1,0 +1,57 @@
+ stage ('checkout'){
+    node ('master'){
+         git ' https://code.devops.fds.com/YC05S3B/rest-demo.git'
+    }
+}
+
+stage ('mvn clean package'){
+    node ('master'){
+       sh 'rm -rf /Users/nisum/Desktop/Docker/*.war'
+       sh 'mvn clean install sonar:sonar'
+    }
+}
+
+stage ('Copying war file'){
+ node ('master'){
+     sh 'cp /Users/nisum/.jenkins/workspace/cicd/target/*.war /Users/nisum/Desktop/Docker/'
+ }   
+}
+
+stage ('Build Docker image'){
+    node ('master'){
+    sh 'docker build -t sample:$BUILD_NUMBER /Users/nisum/Desktop/Docker'
+}
+}
+stage ('Tag image to repository'){
+    node ('master'){
+        sh 'docker tag sample:$BUILD_NUMBER 4482/springapp:$BUILD_NUMBER'
+    }
+}
+stage ('Push Docker image'){
+    node ('master'){
+        withCredentials([string(credentialsId: 'DockerPwd', variable: 'DockerHubPwd')]) {
+   sh "docker login -u 4482 -p ${DockerHubPwd}"
+}
+  sh 'docker push 4482/springapp:$BUILD_NUMBER'
+    }
+}
+stage ('Removing image'){
+    node ('master'){
+        sh 'docker image rm -f 4482/springapp:$BUILD_NUMBER'
+    }
+}
+
+stage ('Deployment App on K8s'){
+    node ('master'){
+        sh 'minikube start'
+        sh 'helm install  /Users/nisum/test'
+        sh 'kubectl apply -f /Users/nisum/Desktop/Deployment.yml'
+        sh 'kubectl apply -f /Users/nisum/Desktop/Service.yml'
+    }
+}
+stage ('Verify health check'){
+    node ('master'){
+        sh'sleep 60'
+        sh'curl -i http://192.168.99.100:31000/api/health-check'
+    }
+}
